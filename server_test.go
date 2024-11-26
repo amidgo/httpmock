@@ -110,6 +110,7 @@ func Test_Server(t *testing.T) {
 			Calls: []Call{
 				{
 					Input: Input{
+						Method: http.MethodPost,
 						Body:   RawBody("Hello World!"),
 						URL:    mustParseURL("http://localhost:1000/any/target?key=value&key=value&name=Dima"),
 						Header: header,
@@ -117,6 +118,32 @@ func Test_Server(t *testing.T) {
 					Response: Response{
 						StatusCode: http.StatusNotFound,
 						Body:       RawBody("Not Found"),
+						Header:     header,
+					},
+				},
+				{
+					Input: Input{
+						Method: http.MethodPut,
+						Body:   RawBody("Hello World!1"),
+						URL:    mustParseURL("http://localhost:1000/any/target?key=value&key=value&name=Dima"),
+						Header: header,
+					},
+					Response: Response{
+						StatusCode: http.StatusNotFound,
+						Body:       RawBody("Not Found1"),
+						Header:     header,
+					},
+				},
+				{
+					Input: Input{
+						Method: http.MethodGet,
+						Body:   RawBody("Hello World!2"),
+						URL:    mustParseURL("http://localhost:1000/any/target?key=value&key=value&name=Dima"),
+						Header: header,
+					},
+					Response: Response{
+						StatusCode: http.StatusNotFound,
+						Body:       RawBody("Not Found2"),
 						Header:     header,
 					},
 				},
@@ -131,19 +158,43 @@ func Test_Server(t *testing.T) {
 
 				req.Header = header
 
-				resp, err := client.Do(req)
+				do(t, client, req,
+					Response{
+						StatusCode: http.StatusNotFound,
+						Body:       RawBody("Not Found"),
+						Header:     header,
+					},
+				)
+
+				req, err = http.NewRequest(http.MethodPut, server.URL+"/any/target?key=value&key=value&name=Dima", strings.NewReader("Hello World!1"))
 				if err != nil {
-					t.Errorf("do request, unexpected error, %s", err)
+					return
 				}
 
-				statusCode := resp.StatusCode
+				req.Header = header
 
-				if statusCode != http.StatusNotFound {
-					t.Errorf("wrong response status code, expected %d, actual %d", http.StatusNotFound, statusCode)
+				do(t, client, req,
+					Response{
+						StatusCode: http.StatusNotFound,
+						Body:       RawBody("Not Found1"),
+						Header:     header,
+					},
+				)
+
+				req, err = http.NewRequest(http.MethodGet, server.URL+"/any/target?key=value&key=value&name=Dima", strings.NewReader("Hello World!2"))
+				if err != nil {
+					return
 				}
 
-				compareBody(t, resp.Body, RawBody("Not Found"))
-				compareHeader(t, resp.Header, header)
+				req.Header = header
+
+				do(t, client, req,
+					Response{
+						StatusCode: http.StatusNotFound,
+						Body:       RawBody("Not Found2"),
+						Header:     header,
+					},
+				)
 			},
 		},
 		&serverTest{
@@ -172,6 +223,13 @@ func Test_Server(t *testing.T) {
 			CaseName: "invalid body, header value, url query, url raw path",
 			TestReporterMock: func(m *testReporterMock) {
 				calls := []testReporterCall{
+					{
+						format: "1 call, wrong r.Method, expected %s, actual %s",
+						args: []any{
+							http.MethodPut,
+							http.MethodPost,
+						},
+					},
 					{
 						format: "1 call, wrong url.Path, expected %s, actual %s",
 						args: []any{
@@ -217,7 +275,8 @@ func Test_Server(t *testing.T) {
 			Calls: []Call{
 				{
 					Input: Input{
-						Body:   RawBody(string("HelloWorld!")),
+						Method: http.MethodPut,
+						Body:   RawBody("HelloWorld!"),
 						URL:    mustParseURL("http://localhost:1000/any/targt?key=value"),
 						Header: header,
 					},
@@ -244,4 +303,24 @@ func mustParseURL(s string) *url.URL {
 	}
 
 	return u
+}
+
+func do(t TestReporter, client *http.Client, req *http.Request, response Response) {
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Errorf("do request, unexpected error, %s", err)
+
+		return
+	}
+
+	defer resp.Body.Close()
+
+	statusCode := resp.StatusCode
+
+	if statusCode != http.StatusNotFound {
+		t.Errorf("wrong response status code, expected %d, actual %d", http.StatusNotFound, statusCode)
+	}
+
+	compareBody(t, resp.Body, response.Body)
+	compareHeader(t, resp.Header, response.Header)
 }

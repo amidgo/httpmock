@@ -17,6 +17,7 @@ type Call struct {
 }
 
 type Input struct {
+	Method string
 	Body   Body
 	Header http.Header
 	URL    *url.URL
@@ -137,9 +138,16 @@ func handleCall(t TestReporter, w http.ResponseWriter, r *http.Request, call Cal
 }
 
 func compareInput(t TestReporter, r *http.Request, input Input) {
+	compareMethod(t, r.Method, input.Method)
 	compareURL(t, r.URL, input.URL)
 	compareBody(t, r.Body, input.Body)
 	compareHeader(t, r.Header, input.Header)
+}
+
+func compareMethod(t TestReporter, requestMethod, inputMethod string) {
+	if requestMethod != inputMethod {
+		t.Errorf("wrong r.Method, expected %s, actual %s", inputMethod, requestMethod)
+	}
 }
 
 func compareURL(t TestReporter, requestURL, inputURL *url.URL) {
