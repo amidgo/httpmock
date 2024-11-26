@@ -129,7 +129,7 @@ func Test_Server(t *testing.T) {
 						Header: header,
 					},
 					Response: Response{
-						StatusCode: http.StatusNotFound,
+						StatusCode: http.StatusInternalServerError,
 						Body:       RawBody("Not Found1"),
 						Header:     header,
 					},
@@ -175,7 +175,7 @@ func Test_Server(t *testing.T) {
 
 				do(t, client, req,
 					Response{
-						StatusCode: http.StatusNotFound,
+						StatusCode: http.StatusInternalServerError,
 						Body:       RawBody("Not Found1"),
 						Header:     header,
 					},
@@ -317,8 +317,8 @@ func do(t TestReporter, client *http.Client, req *http.Request, response Respons
 
 	statusCode := resp.StatusCode
 
-	if statusCode != http.StatusNotFound {
-		t.Errorf("wrong response status code, expected %d, actual %d", http.StatusNotFound, statusCode)
+	if statusCode != response.StatusCode {
+		t.Errorf("wrong response status code, expected %d, actual %d", response.StatusCode, statusCode)
 	}
 
 	compareBody(t, resp.Body, response.Body)
