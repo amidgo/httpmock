@@ -1,4 +1,4 @@
-package httpmock_test
+package httpmock
 
 import (
 	"net/http"
@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/amidgo/httpmock"
 	"github.com/amidgo/tester"
 )
 
@@ -69,28 +68,28 @@ func (tm *testReporterMock) Cleanup(f func()) {
 	tm.t.Cleanup(f)
 }
 
-type ServerTest struct {
+type serverTest struct {
 	CaseName         string
 	TestReporterMock func(m *testReporterMock)
-	Calls            []httpmock.Call
-	Execute          func(server *httptest.Server)
+	Calls            []Call
+	Execute          func(t *testing.T, server *httptest.Server)
 }
 
-func (s *ServerTest) Name() string {
+func (s *serverTest) Name() string {
 	return s.CaseName
 }
 
-func (s *ServerTest) Test(t *testing.T) {
+func (s *serverTest) Test(t *testing.T) {
 	rp := &testReporterMock{t: t}
 
 	if s.TestReporterMock != nil {
 		s.TestReporterMock(rp)
 	}
 
-	server := httpmock.NewServer(rp, s.Calls...)
+	server := NewServer(rp, s.Calls...)
 
 	if s.Execute != nil {
-		s.Execute(server)
+		s.Execute(t, server)
 	}
 }
 
@@ -103,21 +102,26 @@ func Test_Server(t *testing.T) {
 	header.Add("X-My-Headers", "Hello")
 
 	tester.RunNamedTesters(t,
-		&ServerTest{
-			CaseName: "basic call with Hello World! body",
+		&serverTest{
+			CaseName: "basic call with Hello World! body and simple response",
 			TestReporterMock: func(m *testReporterMock) {
 				m.ExpectSuccess()
 			},
-			Calls: []httpmock.Call{
+			Calls: []Call{
 				{
-					Input: httpmock.Input{
-						Body:   httpmock.RawBody(string("Hello World!")),
+					Input: Input{
+						Body:   RawBody("Hello World!"),
 						URL:    mustParseURL("http://localhost:1000/any/target?key=value&key=value&name=Dima"),
 						Header: header,
 					},
+					Response: Response{
+						StatusCode: http.StatusNotFound,
+						Body:       RawBody("Not Found"),
+						Header:     header,
+					},
 				},
 			},
-			Execute: func(server *httptest.Server) {
+			Execute: func(t *testing.T, server *httptest.Server) {
 				client := server.Client()
 
 				req, err := http.NewRequest(http.MethodPost, server.URL+"/any/target?key=value&key=value&name=Dima", strings.NewReader("Hello World!"))
@@ -127,10 +131,22 @@ func Test_Server(t *testing.T) {
 
 				req.Header = header
 
-				client.Do(req)
+				resp, err := client.Do(req)
+				if err != nil {
+					t.Errorf("do request, unexpected error, %s", err)
+				}
+
+				statusCode := resp.StatusCode
+
+				if statusCode != http.StatusNotFound {
+					t.Errorf("wrong response status code, expected %d, actual %d", http.StatusNotFound, statusCode)
+				}
+
+				compareBody(t, resp.Body, RawBody("Not Found"))
+				compareHeader(t, resp.Header, header)
 			},
 		},
-		&ServerTest{
+		&serverTest{
 			CaseName: "expect zero calls but one times executed",
 			TestReporterMock: func(m *testReporterMock) {
 				calls := []testReporterCall{
@@ -141,7 +157,7 @@ func Test_Server(t *testing.T) {
 
 				m.ExpectErrorfCalls(calls)
 			},
-			Execute: func(server *httptest.Server) {
+			Execute: func(_ *testing.T, server *httptest.Server) {
 				client := server.Client()
 
 				req, err := http.NewRequest(http.MethodGet, server.URL+"/any/target", http.NoBody)
@@ -149,10 +165,10 @@ func Test_Server(t *testing.T) {
 					return
 				}
 
-				client.Do(req)
+				_, _ = client.Do(req)
 			},
 		},
-		&ServerTest{
+		&serverTest{
 			CaseName: "invalid body, header value, url query, url raw path",
 			TestReporterMock: func(m *testReporterMock) {
 				calls := []testReporterCall{
@@ -198,16 +214,16 @@ func Test_Server(t *testing.T) {
 
 				m.ExpectErrorfCalls(calls)
 			},
-			Calls: []httpmock.Call{
+			Calls: []Call{
 				{
-					Input: httpmock.Input{
-						Body:   httpmock.RawBody(string("HelloWorld!")),
+					Input: Input{
+						Body:   RawBody(string("HelloWorld!")),
 						URL:    mustParseURL("http://localhost:1000/any/targt?key=value"),
 						Header: header,
 					},
 				},
 			},
-			Execute: func(server *httptest.Server) {
+			Execute: func(_ *testing.T, server *httptest.Server) {
 				client := server.Client()
 
 				req, err := http.NewRequest(http.MethodPost, server.URL+"/any/target", strings.NewReader("Hello World!"))

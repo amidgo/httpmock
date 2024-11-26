@@ -212,7 +212,7 @@ func writeResponseHeader(w http.ResponseWriter, response Response) {
 
 	for key := range header {
 		for _, value := range header.Values(key) {
-			header.Add(key, value)
+			w.Header().Add(key, value)
 		}
 	}
 
