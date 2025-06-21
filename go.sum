@@ -1,2 +1,2 @@
-github.com/amidgo/tester v0.0.7 h1:7aEmYB/OMfQ56nnOaX7Fj1r/YNdkvVlDUiRqrGTk4Qg=
-github.com/amidgo/tester v0.0.7/go.mod h1:u0D7i1Y9Vp2KugELj1znrMXBxVJDgxBDR3Ymej/sbKk=
+golang.org/x/sync v0.15.0 h1:KWH3jNZsfyT6xfAfKiz6MRNmd46ByHDYaZ7KSkCtdW8=
+golang.org/x/sync v0.15.0/go.mod h1:1dzgHSNfp02xaA81J2MS99Qcpr2w7fw1gpm99rleRqA=
