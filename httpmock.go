@@ -132,7 +132,7 @@ func NewTransport(t TestReporter, calls Calls, handleCall HandleCall) http.Round
 func (h *transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	calledTimes := h.calledTimes.Add(1)
 
-	t := testReporterWithCallNumber(h.t, calledTimes)
+	t := errorfTestReporterWithCallNumber(h.t, calledTimes)
 
 	call, ok := h.calls.Call(int(calledTimes))
 	if !ok {

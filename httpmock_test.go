@@ -847,6 +847,36 @@ func Test_Transport(t *testing.T) {
 				},
 			),
 		},
+		&transportTest{
+			Name: "request body return error",
+			TestReporter: ExpectFailureTestReporter(
+				[]testReporterCall{
+					{
+						format: "1 call, read body from request, %s",
+						args: []any{
+							io.ErrUnexpectedEOF,
+						},
+					},
+				},
+				nil,
+			),
+			Calls: StaticCalls(
+				Call{
+					Input: Input{
+						Method: http.MethodGet,
+					},
+					Response: Response{
+						StatusCode: http.StatusOK,
+					},
+				},
+			),
+			Execute: doUncheckedResponse(
+				request{
+					method: http.MethodGet,
+					body:   errorReader{io.ErrUnexpectedEOF},
+				},
+			),
+		},
 	)
 }
 
@@ -1115,6 +1145,16 @@ func (b *bodyTest) Test(t *testing.T) {
 	}
 }
 
+type errorReader struct {
+	err error
+}
+
+var _ io.Reader = errorReader{}
+
+func (e errorReader) Read([]byte) (int, error) {
+	return 0, e.err
+}
+
 func Test_Body(t *testing.T) {
 	type jsonValue struct {
 		Name string `json:"name"`
@@ -1136,4 +1176,55 @@ func Test_Body(t *testing.T) {
 	for _, tst := range tests {
 		t.Run(tst.Name, tst.Test)
 	}
+}
+
+type errorWriteResponseRecorder struct {
+	err error
+}
+
+func (e errorWriteResponseRecorder) WriteHeader(int) {}
+
+func (e errorWriteResponseRecorder) Write([]byte) (int, error) {
+	return 0, e.err
+}
+
+func (e errorWriteResponseRecorder) Header() http.Header {
+	return make(http.Header)
+}
+
+var _ http.ResponseWriter = errorWriteResponseRecorder{}
+
+func Test_HandleCallCompareInput_FailedWriteToResponseWriter(t *testing.T) {
+	tr := ExpectFailureTestReporter(
+		[]testReporterCall{
+			{
+				format: "write body bytes to response writer, unexpected error: %s",
+				args: []any{
+					io.ErrShortWrite,
+				},
+			},
+		},
+		nil,
+	)(t)
+
+	req, err := http.NewRequest(http.MethodGet, "/any/target", http.NoBody)
+	if err != nil {
+		t.Fatalf("do request, unexpected error, %s", err)
+
+		return
+	}
+
+	call := Call{
+		Input: Input{
+			Method: http.MethodGet,
+		},
+		Response: Response{
+			StatusCode: http.StatusOK,
+			Body:       RawBody("Hello World"),
+		},
+	}
+
+	w := errorWriteResponseRecorder{err: io.ErrShortWrite}
+
+	HandleCallCompareInput(tr, w, req, call)
 }
