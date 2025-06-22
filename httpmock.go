@@ -268,7 +268,7 @@ func compareHeader(t TestReporter, requestHeader, inputHeader http.Header) {
 
 	slices.Sort(keys)
 
-	for key := range inputHeader {
+	for _, key := range keys {
 		requestHeaderKeyValues := requestHeader.Values(key)
 		values := inputHeader.Values(key)
 
