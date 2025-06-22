@@ -1,6 +1,7 @@
 package httpmock
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -35,6 +36,7 @@ func JSONBody(value any) Body {
 type Call struct {
 	Input    Input
 	Response Response
+	DoError  error
 	Delay    time.Duration
 }
 
@@ -46,7 +48,6 @@ type Input struct {
 }
 
 type Response struct {
-	DoError    error
 	StatusCode int
 	Body       Body
 	Header     http.Header
@@ -107,16 +108,6 @@ func (staticCalls) Done(int) bool {
 	return true
 }
 
-func JSONContentTypeHeader(header http.Header) http.Header {
-	return ContentTypeHeader("application/json", header)
-}
-
-func ContentTypeHeader(contentType string, header http.Header) http.Header {
-	header.Add("Content-Type", contentType)
-
-	return header
-}
-
 type HandleCall func(t TestReporter, w http.ResponseWriter, r *http.Request, call Call)
 
 type transport struct {
@@ -150,8 +141,8 @@ func (h *transport) RoundTrip(r *http.Request) (*http.Response, error) {
 		return &http.Response{}, nil
 	}
 
-	if call.Response.DoError != nil {
-		return nil, call.Response.DoError
+	if call.DoError != nil {
+		return nil, call.DoError
 	}
 
 	w := httptest.NewRecorder()
@@ -237,6 +228,10 @@ func compareQuery(t TestReporter, requestQuery, inputQuery url.Values) {
 }
 
 func compareBody(t TestReporter, requestBody io.Reader, inputBody Body) {
+	if requestBody == nil {
+		requestBody = io.NopCloser(new(bytes.Reader))
+	}
+
 	bodyBytes, err := io.ReadAll(requestBody)
 	if err != nil {
 		t.Errorf("read body from request, %s", err)

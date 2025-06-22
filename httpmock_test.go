@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -92,13 +93,21 @@ func Test_Transport(t *testing.T) {
 						Input: Input{
 							Method: http.MethodGet,
 							Body:   RawBody("Hello World!2"),
-							URL:    mustParseURL("http://localhost:1000/any/target?key=value&key=value&name=Dima"),
+							URL:    mustParseURL("http://localhost:1000/any/target"),
 							Header: header,
 						},
 						Response: Response{
 							StatusCode: http.StatusNotFound,
 							Body:       RawBody("Not Found2"),
 							Header:     header,
+						},
+					},
+					{
+						Input: Input{
+							Method: http.MethodGet,
+						},
+						Response: Response{
+							StatusCode: http.StatusNotFound,
 						},
 					},
 				}...,
@@ -133,15 +142,24 @@ func Test_Transport(t *testing.T) {
 				do(
 					request{
 						method: http.MethodGet,
-						target: "/any/target?key=value&key=value&name=Dima",
+						target: "/any/target",
 						body:   strings.NewReader("Hello World!2"),
 						header: header,
 					},
-
 					Response{
 						StatusCode: http.StatusNotFound,
 						Body:       RawBody("Not Found2"),
 						Header:     header,
+					},
+				),
+				do(
+					request{
+						method: http.MethodGet,
+						target: "/any/target?key=value&key=value&name=Dima",
+						header: header,
+					},
+					Response{
+						StatusCode: http.StatusNotFound,
 					},
 				),
 			),
@@ -622,6 +640,32 @@ func Test_Transport(t *testing.T) {
 			),
 		},
 		&transportTest{
+			Name: "expect one call but no calls executed",
+			TestReporter: ExpectFailureTestReporter(
+				[]testReporterCall{
+					{
+						format: "assert handler calls, not all calls were handled",
+					},
+				},
+				nil,
+			),
+			Calls:   SequenceCalls(Call{}),
+			Execute: doMany(),
+		},
+		&transportTest{
+			Name: "expect many calls but no calls executed",
+			TestReporter: ExpectFailureTestReporter(
+				[]testReporterCall{
+					{
+						format: "assert handler calls, not all calls were handled",
+					},
+				},
+				nil,
+			),
+			Calls:   SequenceCalls(make([]Call, 100)...),
+			Execute: doMany(),
+		},
+		&transportTest{
 			Name: "invalid body, header value, url query, url raw path",
 			TestReporter: ExpectFailureTestReporter(
 				[]testReporterCall{
@@ -691,6 +735,47 @@ func Test_Transport(t *testing.T) {
 					target: "/any/target",
 					body:   strings.NewReader("Hello World!"),
 				},
+			),
+		},
+		&transportTest{
+			Name:         "do error in response",
+			TestReporter: ExpectSuccessTestReporter,
+			Calls: StaticCalls(
+				Call{
+					Input: Input{
+						Method: http.MethodGet,
+						Body:   RawBody{},
+						Header: header,
+						URL:    mustParseURL("http://localhost:1000/getInfo"),
+					},
+					DoError: io.ErrUnexpectedEOF,
+				},
+			),
+			Execute: doManyParallel(
+				doExpectError(
+					request{
+						method: http.MethodGet,
+						header: header,
+						target: "/getInfo",
+					},
+					io.ErrUnexpectedEOF,
+				),
+				doExpectError(
+					request{
+						method: http.MethodGet,
+						header: header,
+						target: "/getInfo",
+					},
+					io.ErrUnexpectedEOF,
+				),
+				doExpectError(
+					request{
+						method: http.MethodGet,
+						header: header,
+						target: "/getInfo",
+					},
+					io.ErrUnexpectedEOF,
+				),
 			),
 		},
 	)
@@ -772,6 +857,26 @@ func do(req request, expectedResponse Response) func(client *http.Client) error 
 		}
 
 		return errors.Join(errs...)
+	}
+}
+
+func doExpectError(req request, expectedError error) func(client *http.Client) error {
+	return func(client *http.Client) error {
+		header := req.header
+
+		req, err := http.NewRequest(req.method, req.target, req.body)
+		if err != nil {
+			return fmt.Errorf("make request, unexpected error, %s", err)
+		}
+
+		req.Header = header
+
+		_, err = client.Do(req)
+		if !errors.Is(err, expectedError) {
+			return fmt.Errorf("doExpectError failed, expect %w, actual %w", expectedError, err)
+		}
+
+		return nil
 	}
 }
 
@@ -870,5 +975,45 @@ func (tm *testReporterMock) Cleanup(f func()) {
 func compareStatusCode(t TestReporter, actual, expected int) {
 	if actual != expected {
 		t.Errorf("wrong response status code, expected %d, actual %d", expected, actual)
+	}
+}
+
+type bodyTest struct {
+	Name          string
+	Body          Body
+	ExpectedBytes []byte
+}
+
+func (b *bodyTest) Test(t *testing.T) {
+	bytes, err := b.Body.Bytes()
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	if !slices.Equal(bytes, b.ExpectedBytes) {
+		t.Errorf("compare b.Body.Bytes bytes, expected %v, actual %s", string(b.ExpectedBytes), string(bytes))
+	}
+}
+
+func Test_Body(t *testing.T) {
+	type jsonValue struct {
+		Name string `json:"name"`
+	}
+
+	tests := []*bodyTest{
+		{
+			Name:          "raw body",
+			Body:          RawBody("Hello World!"),
+			ExpectedBytes: []byte("Hello World!"),
+		},
+		{
+			Name:          "json body",
+			Body:          JSONBody(jsonValue{Name: "amidman"}),
+			ExpectedBytes: []byte(`{"name":"amidman"}`),
+		},
+	}
+
+	for _, tst := range tests {
+		t.Run(tst.Name, tst.Test)
 	}
 }
