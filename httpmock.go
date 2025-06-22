@@ -309,7 +309,7 @@ func writeResponseBody(t TestReporter, w http.ResponseWriter, body Body) {
 
 	bytes, err := body.Bytes()
 	if err != nil {
-		t.Errorf("read body bytes, unexpected error: %s", err)
+		t.Errorf("read body bytes for write, unexpected error: %s", err)
 
 		return
 	}

@@ -1,6 +1,7 @@
 package httpmock
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -778,7 +780,125 @@ func Test_Transport(t *testing.T) {
 				),
 			),
 		},
+		&transportTest{
+			Name: "body return error",
+			TestReporter: ExpectFailureTestReporter(
+				[]testReporterCall{
+					{
+						format: "1 call, read input body, %s",
+						args: []any{
+							&json.UnsupportedTypeError{
+								Type: reflect.TypeOf((chan int)(nil)),
+							},
+						},
+					},
+				},
+				nil,
+			),
+			Calls: StaticCalls(
+				Call{
+					Input: Input{
+						Method: http.MethodPost,
+						Body:   JSONBody((chan int)(nil)),
+					},
+					Response: Response{
+						StatusCode: http.StatusOK,
+					},
+				},
+			),
+			Execute: doUncheckedResponse(
+				request{
+					method: http.MethodPost,
+					target: "/any/target",
+					body:   strings.NewReader("Hello World!"),
+				},
+			),
+		},
+		&transportTest{
+			Name: "body return error in write response",
+			TestReporter: ExpectFailureTestReporter(
+				[]testReporterCall{
+					{
+						format: "1 call, read body bytes for write, unexpected error: %s",
+						args: []any{
+							&json.UnsupportedTypeError{
+								Type: reflect.TypeOf((chan int)(nil)),
+							},
+						},
+					},
+				},
+				nil,
+			),
+			Calls: StaticCalls(
+				Call{
+					Input: Input{
+						Method: http.MethodGet,
+					},
+					Response: Response{
+						StatusCode: http.StatusOK,
+						Body:       JSONBody(make(chan int)),
+					},
+				},
+			),
+			Execute: doUncheckedResponse(
+				request{
+					method: http.MethodGet,
+					target: "/any/target",
+				},
+			),
+		},
 	)
+}
+
+func Test_Transport_Delay(t *testing.T) {
+	transport := NewTransport(t,
+		StaticCalls(
+			Call{
+				Input: Input{
+					Method: http.MethodGet,
+				},
+				Delay: time.Millisecond * 100,
+				Response: Response{
+					StatusCode: http.StatusNoContent,
+				},
+			},
+		),
+		HandleCallCompareInput,
+	)
+
+	client := &http.Client{
+		Transport: transport,
+	}
+
+	req := request{
+		method: http.MethodGet,
+	}
+
+	now := time.Now()
+
+	err := doMany(
+		doUncheckedResponse(req),
+		doUncheckedResponse(req),
+		doUncheckedResponse(req),
+		doUncheckedResponse(req),
+		doUncheckedResponse(req),
+		doUncheckedResponse(req),
+		doUncheckedResponse(req),
+		doUncheckedResponse(req),
+		doUncheckedResponse(req),
+		doUncheckedResponse(req),
+	)(client)
+	if err != nil {
+		t.Fatalf("execute requests, unexpected err: %v", err)
+
+		return
+	}
+
+	duration := time.Since(now)
+
+	if duration.Truncate(time.Second) != time.Second {
+		t.Error("wrong delay")
+	}
 }
 
 func mustParseURL(s string) *url.URL {
