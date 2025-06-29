@@ -1,6 +1,7 @@
 package httpmock
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1219,4 +1220,78 @@ func Test_HandleCallCompareInput_FailedWriteToResponseWriter(t *testing.T) {
 	w := errorWriteResponseRecorder{err: io.ErrShortWrite}
 
 	HandleCallCompareInput(tr, w, req, call)
+}
+
+func Test_HandlerTransport(t *testing.T) {
+	inputHeader := make(http.Header)
+	inputHeader.Add("Authorization", "Bearer <token>")
+
+	reqBodyContent := []byte("Hello World!!!")
+
+	h := http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !slices.Equal(body, reqBodyContent) {
+				t.Fatalf("compare input request body\n\nexpected:\n%s\n\nactual:\n%s", reqBodyContent, body)
+			}
+
+			CompareHeader(t, r.Header, inputHeader)
+			CompareMethod(t, r.Method, http.MethodGet)
+			CompareURL(t, r.URL, &url.URL{Path: "/any/target"})
+
+			w.Header().Add("Key", "Value")
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte("Hello World!"))
+		},
+	)
+
+	tr := NewHandlerTransport(h)
+	client := &http.Client{Transport: tr}
+
+	outputHeader := make(http.Header)
+
+	outputHeader.Add("Key", "Value")
+
+	newDo := func() func(*http.Client) error {
+		return do(
+			request{
+				method: http.MethodGet,
+				target: "/any/target",
+				body:   bytes.NewReader(reqBodyContent),
+				header: inputHeader,
+			},
+			Response{
+				StatusCode: http.StatusCreated,
+				Body:       RawBody("Hello World!"),
+				Header:     outputHeader,
+			},
+		)
+	}
+
+	err := doManyParallel(multiplyDo(100, newDo)...)(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func multiplyDo(count int, do func() func(*http.Client) error) []func(*http.Client) error {
+	res := make([]func(*http.Client) error, 0, count)
+
+	for range count {
+		res = append(res, do())
+	}
+
+	return res
+}
+
+func Test_nilTestReporter(t *testing.T) {
+	n := nilTestReporter{}
+
+	n.Cleanup(nil)
+	n.Errorf("string", "", 1)
+	n.Fatalf("string", 1, "")
 }

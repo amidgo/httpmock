@@ -118,6 +118,16 @@ type transport struct {
 	calls       Calls
 }
 
+func NewHandlerTransport(h http.Handler) http.RoundTripper {
+	return &transport{
+		t:     nilTestReporter{},
+		calls: staticCalls{{}},
+		handleCall: func(_ TestReporter, w http.ResponseWriter, r *http.Request, _ Call) {
+			h.ServeHTTP(w, r)
+		},
+	}
+}
+
 func NewTransport(t TestReporter, calls Calls, handleCall HandleCall) http.RoundTripper {
 	ts := &transport{
 		t:          t,
@@ -137,7 +147,7 @@ func (h *transport) RoundTrip(r *http.Request) (*http.Response, error) {
 
 	call, ok := h.calls.Call(int(calledTimes))
 	if !ok {
-		h.t.Fatalf("no expected calls left")
+		t.Fatalf("no expected calls left")
 
 		return &http.Response{}, nil
 	}

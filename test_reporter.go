@@ -24,3 +24,9 @@ type errorfPrefixTestReporter struct {
 func (p errorfPrefixTestReporter) Errorf(format string, args ...any) {
 	p.TestReporter.Errorf(p.prefix+format, args...)
 }
+
+type nilTestReporter struct{}
+
+func (nilTestReporter) Fatalf(string, ...any) {}
+func (nilTestReporter) Errorf(string, ...any) {}
+func (nilTestReporter) Cleanup(func())        {}
