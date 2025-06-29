@@ -3,6 +3,7 @@ package httpmock
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -166,28 +167,32 @@ func (h *transport) assert() {
 }
 
 func HandleCallCompareInput(t TestReporter, w http.ResponseWriter, r *http.Request, call Call) {
-	compareInput(t, r, call.Input)
-	writeResponse(t, w, call.Response)
+	CompareInput(t, r, call.Input)
+
+	err := WriteResponse(w, call.Response)
+	if err != nil {
+		t.Errorf(err.Error())
+	}
 
 	if call.Delay > 0 {
 		<-time.After(call.Delay)
 	}
 }
 
-func compareInput(t TestReporter, r *http.Request, input Input) {
-	compareMethod(t, r.Method, input.Method)
-	compareURL(t, r.URL, input.URL)
-	compareBody(t, r.Body, input.Body)
-	compareHeader(t, r.Header, input.Header)
+func CompareInput(t TestReporter, r *http.Request, input Input) {
+	CompareMethod(t, r.Method, input.Method)
+	CompareURL(t, r.URL, input.URL)
+	CompareBody(t, r.Body, input.Body)
+	CompareHeader(t, r.Header, input.Header)
 }
 
-func compareMethod(t TestReporter, requestMethod, inputMethod string) {
+func CompareMethod(t TestReporter, requestMethod, inputMethod string) {
 	if requestMethod != inputMethod {
 		t.Errorf("wrong r.Method, expected %s, actual %s", inputMethod, requestMethod)
 	}
 }
 
-func compareURL(t TestReporter, requestURL, inputURL *url.URL) {
+func CompareURL(t TestReporter, requestURL, inputURL *url.URL) {
 	if inputURL == nil {
 		return
 	}
@@ -196,10 +201,10 @@ func compareURL(t TestReporter, requestURL, inputURL *url.URL) {
 		t.Errorf("wrong url.Path, expected %s, actual %s", inputURL.Path, requestURL.Path)
 	}
 
-	compareQuery(t, requestURL.Query(), inputURL.Query())
+	CompareQuery(t, requestURL.Query(), inputURL.Query())
 }
 
-func compareQuery(t TestReporter, requestQuery, inputQuery url.Values) {
+func CompareQuery(t TestReporter, requestQuery, inputQuery url.Values) {
 	if len(inputQuery) == 0 {
 		return
 	}
@@ -227,7 +232,7 @@ func compareQuery(t TestReporter, requestQuery, inputQuery url.Values) {
 	}
 }
 
-func compareBody(t TestReporter, requestBody io.Reader, inputBody Body) {
+func CompareBody(t TestReporter, requestBody io.Reader, inputBody Body) {
 	if requestBody == nil {
 		requestBody = io.NopCloser(new(bytes.Reader))
 	}
@@ -255,7 +260,7 @@ func compareBody(t TestReporter, requestBody io.Reader, inputBody Body) {
 	}
 }
 
-func compareHeader(t TestReporter, requestHeader, inputHeader http.Header) {
+func CompareHeader(t TestReporter, requestHeader, inputHeader http.Header) {
 	keys := make([]string, 0, len(inputHeader))
 	for key := range inputHeader {
 		keys = append(keys, key)
@@ -277,15 +282,19 @@ func compareHeader(t TestReporter, requestHeader, inputHeader http.Header) {
 	}
 }
 
-func writeResponse(t TestReporter, w http.ResponseWriter, response Response) {
-	writeResponseHeader(w, response)
-	writeResponseBody(t, w, response.Body)
+func WriteResponse(w http.ResponseWriter, response Response) error {
+	WriteHeader(w, response.Header, response.StatusCode)
+
+	err := WriteBody(w, response.Body)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func writeResponseHeader(w http.ResponseWriter, response Response) {
-	header := response.Header
-
-	if response.Header == nil {
+func WriteHeader(w http.ResponseWriter, header http.Header, statusCode int) {
+	if header == nil {
 		header = make(http.Header)
 	}
 
@@ -295,27 +304,27 @@ func writeResponseHeader(w http.ResponseWriter, response Response) {
 		}
 	}
 
-	if response.StatusCode == 0 {
-		response.StatusCode = http.StatusOK
+	if statusCode == 0 {
+		statusCode = http.StatusOK
 	}
 
-	w.WriteHeader(response.StatusCode)
+	w.WriteHeader(statusCode)
 }
 
-func writeResponseBody(t TestReporter, w http.ResponseWriter, body Body) {
+func WriteBody(w http.ResponseWriter, body Body) error {
 	if body == nil {
 		body = RawBody{}
 	}
 
 	bytes, err := body.Bytes()
 	if err != nil {
-		t.Errorf("read body bytes for write, unexpected error: %s", err)
-
-		return
+		return fmt.Errorf("get response body bytes, unexpected error: %w", err)
 	}
 
 	_, err = w.Write(bytes)
 	if err != nil {
-		t.Errorf("write body bytes to response writer, unexpected error: %s", err)
+		return fmt.Errorf("write response body, unexpected error: %w", err)
 	}
+
+	return nil
 }

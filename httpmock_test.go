@@ -819,12 +819,7 @@ func Test_Transport(t *testing.T) {
 			TestReporter: ExpectFailureTestReporter(
 				[]testReporterCall{
 					{
-						format: "1 call, read body bytes for write, unexpected error: %s",
-						args: []any{
-							&json.UnsupportedTypeError{
-								Type: reflect.TypeOf((chan int)(nil)),
-							},
-						},
+						format: "1 call, get response body bytes, unexpected error: json: unsupported type: chan int",
 					},
 				},
 				nil,
@@ -997,8 +992,8 @@ func do(req request, expectedResponse Response) func(client *http.Client) error 
 		tr := &testReporterMock{}
 
 		compareStatusCode(tr, resp.StatusCode, expectedResponse.StatusCode)
-		compareBody(tr, resp.Body, expectedResponse.Body)
-		compareHeader(tr, resp.Header, expectedResponse.Header)
+		CompareBody(tr, resp.Body, expectedResponse.Body)
+		CompareHeader(tr, resp.Header, expectedResponse.Header)
 
 		errs := make([]error, 0, len(tr.errorfCalls))
 
@@ -1198,10 +1193,7 @@ func Test_HandleCallCompareInput_FailedWriteToResponseWriter(t *testing.T) {
 	tr := ExpectFailureTestReporter(
 		[]testReporterCall{
 			{
-				format: "write body bytes to response writer, unexpected error: %s",
-				args: []any{
-					io.ErrShortWrite,
-				},
+				format: "write response body, unexpected error: short write",
 			},
 		},
 		nil,
